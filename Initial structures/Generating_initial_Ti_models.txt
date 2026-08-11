@@ -1,0 +1,26 @@
+########################################################## 
+#Building the initial stuctures of Ti models using Atomsk
+##########################################################
+
+# Experimental lattice parameters at room temperature of crystalline HCP Ti are used.
+# x-axis, y-axis, and z-axis are aligned to <10-10> <1-210>, and <0001> crystallographic orientations, respectively.
+# First, an orthogonal HCP supercell is construted. Then different simulation boxes are created by replicating this supercell Nx x Ny x Nz times.
+# Stucture file is saved as LAMMPS data file ready to be used in the input file. 
+
+
+# Run this command line in your terminal by choosing the appropriate replication:
+atomsk --create hcp 2.95 4.68 Ti orient [10-10] [1-210] [0001] -duplicate N N N TiN.lmp
+
+
+# Ti models
+# N=10 -> 4,000 atoms -> 4k -> Ti10.lmp
+# N=20 -> 32,000 atoms -> 32k -> Ti20.lmp
+# N=30 -> 108,000 atoms -> 108k -> Ti30.lmp
+# N=60 -> 864,000 atoms -> 1M -> Ti60.lmp
+# N=100 -> 4,000,000 atoms -> 4M -> Ti100.lmp
+# N=140 -> 10,976,000 atoms -> 10M -> Ti140.lmp
+# N=200 -> 32,000,000 atoms -> 32M -> Ti200.lmp
+
+
+#Example of usage for generating the 4k Ti model
+#atomsk --create hcp 2.95 4.68 Ti orient [10-10] [1-210] [0001] -duplicate 10 10 10 Ti10.lmp
