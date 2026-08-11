@@ -1,0 +1,68 @@
+# Equilibration of Single-Crystal Ti
+#
+# Description:
+# Equilibrates the Ti simulation box at 300 K and 0 bar using an NPT (constant number of particles, pressure, and temperature) ensemble with the Nose-Hoover thermostat and barostat.
+#
+# Temperature : 300 K
+# Pressure    : 0 bar
+# Timestep    : 1 fs (0.001 ps)
+# Total run   : 100 ps (100,000 MD steps)
+# Restart     : written every 20,000 MD steps
+# Input       : TiX.lmp (initial structure data file; X denotes the supercell multiplier; replace with the appropriate filename for each model: X=10,20,30,60,100,140,200 for the 4k,32k,108k,1M,4M,10M,32M models, respectively)
+# Output      : rst.*.equil (restart file for subsequent compression run)
+
+
+# ------------------------ INITIALIZATION ----------------------------
+
+units           metal						# Energy: eV | Length: Angstrom | Time: ps | Pressure: bar | Temperature: K
+dimension       3							# 3D simulation
+boundary        p p p						# Periodic boundary conditions in all directions
+atom_style      atomic						# Simple atomic style
+
+
+# ----------------------- READ STRUCTURE -----------------------------
+
+# Read the initial atomic structure from the data files created with ATOMSK.
+read_data       TiX.lmp						# X denotes the supercell multiplier; replace with the appropriate filename for each model (e.g., Ti10.lmp for the 4k model)
+
+
+# ------------------------ FORCE FIELD -------------------------------
+
+# Modified Embedded Atom Method (MEAM) potential for Ti. Requires two parameter files:
+#   library.meam : general MEAM library parameters
+#   Ti.meam      : Ti-specific MEAM parameters
+
+pair_style      meam
+pair_coeff      * * library.meam Ti Ti.meam Ti
+
+neighbor		2.0 bin									# 2.0 Angstrom extra distance beyond the cutoff radius
+neigh_modify	every 1 delay 10 check yes     			# rebuild every step if atoms have moved sufficiently
+
+
+# ----------------------- COMPUTATIONS -----------------------------------
+
+compute         peratom all pe/atom 				# Per-atom potential energy for visualization in OVITO
+
+
+# ---------------------- EQUILIBRATION -------------------------------
+
+timestep        0.001 						# In ps -> 1 fs
+
+# Initialize atom velocities from a Maxwell-Boltzmann distribution at 300 K.
+velocity        all create 300 12345 mom yes rot no 		# mom yes : zero net linear momentum | rot no: do not remove angular momentum
+fix             npt1 all npt temp 300 300 0.1 iso 0 0 1 	# isotropic NPT ensemble: temperature 300 K, pressure 0 bar | Thermostat damping: 0.1 ps | Barostat damping: 1 ps
+
+# Print thermodynamic data every 100 MD steps
+thermo          100
+thermo_style    custom step temp press vol pxx pyy pzz pe ke 	# MD step | temperature | pressure | volume | pxx,pyy,pzz: components of pressure tensor(stress tensor) | pe: potential energy | ke: kinetic energy
+
+# Write restart files every 20,000 MD steps
+restart         20000 rst.*.equil
+
+# Run 100,000 MD steps = 100 ps equilibration
+run             100000
+
+unfix           npt1
+
+print           "Equilibration complete. Use restart file as input for compression"
+

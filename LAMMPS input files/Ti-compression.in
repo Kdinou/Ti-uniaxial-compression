@@ -1,0 +1,106 @@
+# Uniaxial Compression of Single-Crystal Ti 
+
+# Description:
+# Applies uniaxial compressive strain along the z-direction at a constant engineering strain rate using an NPT (constant number of particles, pressure, and temperature) ensemble with zero lateral pressure.
+#
+# To perform simulations at a different strain rate, modify ONLY the srate variable.
+#
+# All respective parameters (total MD steps, dump interval) are calculated automatically.
+#
+# Strain rate (srate) : 1e8 s^-1, 5e8 s^-1, 1e9 s^-1, 1e10 s^-1
+# Simulation time : 4000 ps, 800 ps, 400 ps, 40 ps -> corresponding to total 40% applied strain
+# Temperature : 300 K (Nose-Hoover thermostat)
+# Timestep    : 1 fs (0.001 ps)
+# Total run   : calculated automatically from srate to reach 40% strain
+# Input       : rst.100000.equil  (restart file from the corresponding equilibration run of each model)
+# Output      : Ti_def.txt        (compression results)
+
+
+# ------------------------ INITIALIZATION ----------------------------
+
+units           metal								# Energy: eV | Length: Angstrom | Time: ps | Pressure: bar | Temperature: K
+dimension       3									# 3D simulation
+boundary        p p p								# Periodic boundary conditions in all directions
+atom_style      atomic								# Simple atomic style
+
+
+# ----------------------- READ STRUCTURE -----------------------------
+
+# Read the equilibrated structure from a restart file.
+read_restart	rst.100000.equil
+
+
+# ------------------------ FORCE FIELD -------------------------------
+
+# Modified Embedded Atom Method (MEAM) potential for Ti. Requires two parameter files:
+#   library.meam : general MEAM library parameters
+#   Ti.meam      : Ti-specific MEAM parameters
+
+pair_style      meam
+pair_coeff      * * library.meam Ti Ti.meam Ti
+
+neighbor		2.0 bin								# 2.0 Angstrom extra distance beyond the cutoff radius
+neigh_modify	every 1 delay 10 check yes     		# rebuild every step if atoms have moved sufficiently   
+
+
+# ----------------------- COMPUTATIONS -----------------------------------
+
+compute         peratom all pe/atom      # Per-atom potential energy for visualization in OVITO
+
+
+# ---------------------- DEFORMATION SETUP ---------------------------
+
+# Store initial box length in z dimension as the reference for strain calculation.
+variable        tmp equal "lz"		
+variable        L0 equal ${tmp}	
+print           "Initial Length L0 = ${L0} Angstrom"
+
+reset_timestep  0
+timestep        0.001                       # In ps -> 1 fs
+
+# ---------------------------------------------------------------
+# CHANGE ONLY THIS LINE to apply different strain rates.
+variable        srate equal 1.0e9           # all strain rates used: 1.0e8, 5.0e8, 1.0e9, 1.0e10
+# ---------------------------------------------------------------
+
+variable        srate1 equal "-v_srate / 1.0e12"  				# Converted to strain per timestep (ps) | Negative sign implies compression (box shrinks in z direction)
+variable        nsteps equal round(0.4/(v_srate*1.0e-12))		# Total MD steps to reach 40% applied strain
+variable        dump_int equal round(0.05/(v_srate*1.0e-12))	# Dump interval: every 5% applied strain
+
+fix             npt2 all npt temp 300 300 0.1 x 0 0 1 y 0 0 1	# NPT ensemble; thermostat at 300 K; barostat at 0 bar for controlling the lateral pressure at x and y directions. 
+
+fix             deformz all deform 1 z erate ${srate1} units box remap x 	#deform box in z direction | remap x rescales atom positions affinely with the box.
+
+
+# ---------------------- OUTPUT --------------------------------------
+variable        strain equal "(lz - v_L0)/v_L0"		# Engineering strain in z: (lz - L0) / L0
+variable        p1 equal "v_strain"
+
+#Stress components converted from bar to GPa
+variable        p2 equal "-pxx/10000"				# Stress in x (GPa)	
+variable        p3 equal "-pyy/10000"				# Stress in y (GPa)
+variable        p4 equal "-pzz/10000"				# Stress in z (GPa) - loading direction
+variable		p5 equal "lz"						# Current box length in z (Angstrom)
+variable		p6 equal "vol"						# Current box volume (Angstrom^3)
+
+
+# Write output every 100 MD steps.
+# Columns: strain | stress_x | stress_y | stress_z | lz | volume
+fix             defprint all print 100 "${p1} ${p2} ${p3} ${p4} ${p5} ${p6}" file Ti_def.txt screen no
+
+# Store per-atom data for OVITO at every ~5% strain interval
+dump     		1 all custom ${dump_int} dump.comp.* id type xs ys zs c_peratom fx fy fz
+
+# Thermodynamic output every 100 MD steps
+thermo          100								
+thermo_style    custom step v_strain temp v_p2 v_p3 v_p4 ke pe press lz vol 
+
+restart         ${dump_int} rst.*.ti_comp			# Restart files every 5% strain 
+
+
+# ---------------------- RUN ------------------------------------
+
+run             ${nsteps}							# 40% applied strain at the specified "srate"
+
+print           "Simulation complete."
+
